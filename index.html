@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WebGIS – Sebaran Puskesmas Kota Pekanbaru</title>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  /* ===================== RESET & VARS ===================== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --green:   #1a7f4b;
+    --green-l: #22a663;
+    --green-d: #0f5230;
+    --teal:    #0d9488;
+    --amber:   #d97706;
+    --red:     #dc2626;
+    --sky:     #0284c7;
+    --bg:      #f0f4f0;
+    --card:    #ffffff;
+    --text:    #1a2e1a;
+    --muted:   #5a7060;
+    --border:  #d1e4d1;
+    --shadow:  0 4px 24px rgba(26,127,75,.13);
+  }
+
+  html, body { height: 100%; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); color: var(--text); }
+
+  /* ===================== LAYOUT ===================== */
+  #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  /* ---- HEADER ---- */
+  header {
+    background: linear-gradient(135deg, var(--green-d) 0%, var(--green) 60%, var(--teal) 100%);
+    color: #fff;
+    padding: 0 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 12px rgba(0,0,0,.25);
+    z-index: 1000;
+    position: relative;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 40px; height: 40px; background: rgba(255,255,255,.18);
+    border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; border: 1px solid rgba(255,255,255,.3);
+  }
+  .header-title { line-height: 1.2; }
+  .header-title h1 { font-size: 15px; font-weight: 800; letter-spacing: -.2px; }
+  .header-title p  { font-size: 11px; opacity: .75; font-weight: 500; }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .badge {
+    background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3);
+    border-radius: 20px; padding: 4px 12px;
+    font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  }
+
+  /* ---- BODY ---- */
+  .body { display: flex; flex: 1; overflow: hidden; }
+
+  /* ---- SIDEBAR ---- */
+  #sidebar {
+    width: 300px; flex-shrink: 0;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    z-index: 500;
+  }
+  .sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h3 {
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+
+  /* Stats row */
+  .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-box {
+    background: var(--bg); border-radius: 10px; padding: 10px 12px;
+    border: 1px solid var(--border);
+  }
+  .stat-box .num { font-size: 22px; font-weight: 800; color: var(--green); line-height: 1; }
+  .stat-box .lbl { font-size: 10px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+
+  /* Legend */
+  .legend-item { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; font-size: 12px; font-weight: 500; }
+  .legend-dot {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid rgba(0,0,0,.15);
+    box-shadow: 0 0 0 3px rgba(0,0,0,.05);
+  }
+  .dot-rawat    { background: var(--red);   box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
+  .dot-nonrawat { background: var(--sky);   box-shadow: 0 0 0 3px rgba(2,132,199,.15); }
+  .dot-kec      { background: rgba(26,127,75,.25); border: 2px solid var(--green); width: 14px; height: 14px; border-radius: 3px; }
+
+  /* Kecamatan filter */
+  .filter-row { display: flex; flex-direction: column; gap: 5px; }
+  .filter-btn {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 11px; font-size: 11px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: all .18s; color: var(--text);
+    font-family: inherit;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    background: var(--green); color: #fff; border-color: var(--green);
+  }
+  .filter-btn span.cnt { font-family: 'DM Mono', monospace; font-size: 10px; }
+
+  /* Puskesmas list */
+  #pusk-list { flex: 1; overflow-y: auto; padding: 0; }
+  .pusk-card {
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: background .15s;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .pusk-card:hover { background: #f5fcf5; }
+  .pusk-card.selected { background: #e6f7ed; }
+  .pusk-icon {
+    width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 15px;
+  }
+  .icon-rawat    { background: #fee2e2; }
+  .icon-nonrawat { background: #dbeafe; }
+  .pusk-info h4 { font-size: 12px; font-weight: 700; line-height: 1.3; }
+  .pusk-info p  { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .pusk-tag {
+    display: inline-block; font-size: 9px; font-weight: 700; border-radius: 4px;
+    padding: 2px 6px; margin-top: 4px; letter-spacing: .3px;
+  }
+  .tag-rawat    { background: #fee2e2; color: #991b1b; }
+  .tag-nonrawat { background: #dbeafe; color: #1e40af; }
+
+  /* ---- MAP ---- */
+  #map-wrap { flex: 1; position: relative; }
+  #map { width: 100%; height: 100%; }
+
+  /* ---- MAP CONTROLS overlay ---- */
+  .map-overlay-title {
+    position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 7px 18px; font-size: 12px; font-weight: 700; color: var(--green-d);
+    z-index: 400; pointer-events: none; box-shadow: var(--shadow);
+    white-space: nowrap;
+  }
+
+  /* ---- POPUP custom ---- */
+  .leaflet-popup-content-wrapper {
+    border-radius: 14px !important; padding: 0 !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,.18) !important;
+    overflow: hidden; min-width: 240px;
+  }
+  .leaflet-popup-content { margin: 0 !important; width: auto !important; }
+  .leaflet-popup-tip-container { margin-top: -1px; }
+  .popup-header {
+    padding: 12px 16px 10px;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .popup-header-rawat    { background: linear-gradient(135deg,#fee2e2,#fecaca); }
+  .popup-header-nonrawat { background: linear-gradient(135deg,#dbeafe,#bfdbfe); }
+  .popup-ico { font-size: 24px; }
+  .popup-title h3 { font-size: 13px; font-weight: 800; line-height: 1.3; color: #111; }
+  .popup-title .popup-sub { font-size: 10px; color: #555; margin-top: 2px; }
+  .popup-body { padding: 10px 16px 14px; }
+  .popup-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 7px; font-size: 11px; }
+  .popup-row .label { color: var(--muted); font-weight: 600; min-width: 80px; flex-shrink: 0; }
+  .popup-row .val   { color: var(--text); font-weight: 500; }
+  .popup-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700;
+  }
+  .badge-rawat    { background: #fee2e2; color: #991b1b; }
+  .badge-nonrawat { background: #dbeafe; color: #1e40af; }
+  .popup-btn {
+    display: block; width: 100%; margin-top: 8px;
+    background: var(--green); color: #fff;
+    border: none; border-radius: 8px; padding: 8px;
+    font-size: 11px; font-weight: 700; cursor: pointer; font-family: inherit;
+    transition: background .15s;
+  }
+  .popup-btn:hover { background: var(--green-d); }
+
+  /* Scrollbar */
+  #pusk-list::-webkit-scrollbar { width: 4px; }
+  #pusk-list::-webkit-scrollbar-track { background: transparent; }
+  #pusk-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* Mobile toggle sidebar */
+  #toggle-sidebar {
+    display: none; position: absolute; bottom: 20px; left: 20px; z-index: 600;
+    background: var(--green); color: #fff; border: none; border-radius: 50%;
+    width: 48px; height: 48px; font-size: 20px; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3); font-family: inherit;
+  }
+  @media (max-width: 680px) {
+    #sidebar { position: absolute; top: 0; left: 0; bottom: 0; transform: translateX(-100%); transition: transform .3s; z-index: 800; width: 280px; }
+    #sidebar.open { transform: translateX(0); }
+    #toggle-sidebar { display: flex; align-items: center; justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-left">
+      <div class="logo-icon">🏥</div>
+      <div class="header-title">
+        <h1>WebGIS Sebaran Puskesmas</h1>
+        <p>Kota Pekanbaru, Provinsi Riau</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="badge">📍 PEKANBARU</div>
+      <div class="badge" id="year-badge">2024</div>
+    </div>
+  </header>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+
+      <!-- Stats -->
+      <div class="sidebar-section">
+        <h3>📊 Statistik</h3>
+        <div class="stats-row">
+          <div class="stat-box"><div class="num" id="stat-total">20</div><div class="lbl">Total Puskesmas</div></div>
+          <div class="stat-box"><div class="num" id="stat-rawat" style="color:var(--red)">7</div><div class="lbl">Rawat Inap</div></div>
+          <div class="stat-box"><div class="num" id="stat-non" style="color:var(--sky)">13</div><div class="lbl">Non Rawat Inap</div></div>
+          <div class="stat-box"><div class="num">15</div><div class="lbl">Kecamatan</div></div>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="sidebar-section">
+        <h3>🗺️ Legenda</h3>
+        <div class="legend-item"><div class="legend-dot dot-rawat"></div>Puskesmas Rawat Inap</div>
+        <div class="legend-item"><div class="legend-dot dot-nonrawat"></div>Puskesmas Non Rawat Inap</div>
+        <div class="legend-item"><div class="legend-dot dot-kec"></div>Batas Kecamatan (Layer 2)</div>
+        <div style="margin-top:6px; font-size:10px; color:var(--muted); line-height:1.5;">
+          🗾 Basemap: OpenStreetMap<br>
+          📌 Klik marker untuk info detail<br>
+          🔍 Scroll / pinch untuk zoom
+        </div>
+      </div>
+
+      <!-- Filter Kecamatan -->
+      <div class="sidebar-section">
+        <h3>🏘️ Filter Kecamatan</h3>
+        <div class="filter-row" id="filter-row"></div>
+      </div>
+
+      <!-- List -->
+      <div id="pusk-list"></div>
+    </div>
+
+    <!-- MAP -->
+    <div id="map-wrap">
+      <div class="map-overlay-title">🏥 Sebaran Puskesmas Kota Pekanbaru</div>
+      <div id="map"></div>
+      <button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ===================== DATA =====================
+const puskesmas = [
+  { id:1,  nama:"Puskesmas Garuda",        kec:"Marpoyan Damai", alamat:"Jl. Garuda No. 12A",           jenis:"Non Rawat Inap", lat:-0.5300, lng:101.4230, jam:"07.00–14.00 WIB", telp:"(0761) 7891001" },
+  { id:2,  nama:"Puskesmas Harapan Raya",  kec:"Bukit Raya",     alamat:"Jl. Imam Munandar No. 40",     jenis:"Non Rawat Inap", lat:-0.5520, lng:101.4650, jam:"07.00–14.00 WIB", telp:"(0761) 7891002" },
+  { id:3,  nama:"Puskesmas Karya Wanita",  kec:"Rumbai Pesisir", alamat:"Jl. Gabus",                    jenis:"Rawat Inap",     lat:-0.4980, lng:101.4150, jam:"24 Jam",          telp:"(0761) 7891003" },
+  { id:4,  nama:"Puskesmas Langsat",       kec:"Sukajadi",       alamat:"Jl. Langsat No. 1",             jenis:"Non Rawat Inap", lat:-0.5028, lng:101.4395, jam:"07.00–14.00 WIB", telp:"(0761) 7891004" },
+  { id:5,  nama:"Puskesmas Lima Puluh",    kec:"Lima Puluh",     alamat:"Jl. Sumber Sari No. 116",       jenis:"Non Rawat Inap", lat:-0.5180, lng:101.4520, jam:"07.00–14.00 WIB", telp:"(0761) 7891005" },
+  { id:6,  nama:"Puskesmas Melur",         kec:"Sukajadi",       alamat:"Jl. Melur No. 103",             jenis:"Non Rawat Inap", lat:-0.5012, lng:101.4280, jam:"07.00–14.00 WIB", telp:"(0761) 7891006" },
+  { id:7,  nama:"Puskesmas Muara Fajar",   kec:"Rumbai",         alamat:"Jl. Raya Pekanbaru-Minas Km 18",jenis:"Rawat Inap",     lat:-0.4620, lng:101.5050, jam:"24 Jam",          telp:"(0761) 7891007" },
+  { id:8,  nama:"Puskesmas Payung Sekaki", kec:"Payung Sekaki",  alamat:"Jl. Fajar No. 21",              jenis:"Rawat Inap",     lat:-0.5120, lng:101.3980, jam:"24 Jam",          telp:"(0761) 7891008" },
+  { id:9,  nama:"Puskesmas Pekanbaru Kota",kec:"Pekanbaru Kota", alamat:"Jl. Sago",                     jenis:"Non Rawat Inap", lat:-0.5065, lng:101.4487, jam:"07.00–14.00 WIB", telp:"(0761) 7891009" },
+  { id:10, nama:"Puskesmas Rumbai",        kec:"Rumbai",         alamat:"Jl. Sri Palas",                 jenis:"Rawat Inap",     lat:-0.4720, lng:101.4550, jam:"24 Jam",          telp:"(0761) 7891010" },
+  { id:11, nama:"Puskesmas Rumbai Pesisir",kec:"Rumbai Pesisir", alamat:"Jl. Sekolah No. 52",            jenis:"Non Rawat Inap", lat:-0.4850, lng:101.4200, jam:"07.00–14.00 WIB", telp:"(0761) 7891011" },
+  { id:12, nama:"Puskesmas Sail",          kec:"Sail",           alamat:"Jl. Hang Jebat No. 15",         jenis:"Non Rawat Inap", lat:-0.5230, lng:101.4560, jam:"07.00–14.00 WIB", telp:"(0761) 7891012" },
+  { id:13, nama:"Puskesmas Senapelan",     kec:"Senapelan",      alamat:"Jl. Jati No. 04",               jenis:"Non Rawat Inap", lat:-0.5090, lng:101.4400, jam:"07.00–14.00 WIB", telp:"(0761) 7891013" },
+  { id:14, nama:"Puskesmas Sidomulyo",     kec:"Tampan",         alamat:"Jl. Raya Pekanbaru-Bangkinang", jenis:"Non Rawat Inap", lat:-0.4990, lng:101.3700, jam:"07.00–14.00 WIB", telp:"(0761) 7891014" },
+  { id:15, nama:"Puskesmas Simpang Baru",  kec:"Tampan",         alamat:"Jl. Flamboyan No. 100",         jenis:"Non Rawat Inap", lat:-0.5050, lng:101.3810, jam:"07.00–14.00 WIB", telp:"(0761) 7891015" },
+  { id:16, nama:"Puskesmas Simpang Tiga",  kec:"Marpoyan Damai", alamat:"Jl. Kaharudin Nasution",        jenis:"Rawat Inap",     lat:-0.5410, lng:101.4300, jam:"24 Jam",          telp:"(0761) 7891016" },
+  { id:17, nama:"Puskesmas Tenayan Raya",  kec:"Tenayan Raya",   alamat:"Jl. Unggas No. 5",              jenis:"Rawat Inap",     lat:-0.5350, lng:101.4900, jam:"24 Jam",          telp:"(0761) 7891017" },
+  { id:18, nama:"Puskesmas Umban Sari",    kec:"Rumbai",         alamat:"Jl. Umban Sari",                jenis:"Non Rawat Inap", lat:-0.4780, lng:101.4420, jam:"07.00–14.00 WIB", telp:"(0761) 7891018" },
+  { id:19, nama:"Puskesmas Rawat Inap Sidomulyo", kec:"Marpoyan Damai", alamat:"Jl. Soekarno Hatta",    jenis:"Rawat Inap",     lat:-0.5270, lng:101.4160, jam:"24 Jam",          telp:"(0761) 7891019" },
+  { id:20, nama:"Puskesmas Sapta Taruna",  kec:"Bukit Raya",     alamat:"Jl. Sutan Syahrir No. 25",      jenis:"Non Rawat Inap", lat:-0.5600, lng:101.4700, jam:"07.00–14.00 WIB", telp:"(0761) 7891020" },
+];
+
+// Kecamatan bounding polygons (simplified convex hulls for layer 2)
+const kecamatanData = [
+  { nama:"Tampan",         color:"#16a34a", coords:[[-0.460,101.355],[-0.460,101.400],[-0.530,101.400],[-0.530,101.355]] },
+  { nama:"Payung Sekaki",  color:"#0891b2", coords:[[-0.470,101.380],[-0.470,101.415],[-0.540,101.415],[-0.540,101.380]] },
+  { nama:"Marpoyan Damai", color:"#d97706", coords:[[-0.510,101.408],[-0.510,101.448],[-0.560,101.448],[-0.560,101.408]] },
+  { nama:"Bukit Raya",     color:"#7c3aed", coords:[[-0.530,101.450],[-0.530,101.490],[-0.580,101.490],[-0.580,101.450]] },
+  { nama:"Tenayan Raya",   color:"#be123c", coords:[[-0.500,101.475],[-0.500,101.520],[-0.570,101.520],[-0.570,101.475]] },
+  { nama:"Rumbai",         color:"#0284c7", coords:[[-0.440,101.430],[-0.440,101.480],[-0.495,101.480],[-0.495,101.430]] },
+  { nama:"Rumbai Pesisir", color:"#059669", coords:[[-0.465,101.400],[-0.465,101.435],[-0.510,101.435],[-0.510,101.400]] },
+  { nama:"Senapelan",      color:"#ea580c", coords:[[-0.495,101.428],[-0.495,101.460],[-0.525,101.460],[-0.525,101.428]] },
+  { nama:"Sukajadi",       color:"#9333ea", coords:[[-0.490,101.420],[-0.490,101.448],[-0.515,101.448],[-0.515,101.420]] },
+  { nama:"Pekanbaru Kota", color:"#b45309", coords:[[-0.495,101.438],[-0.495,101.462],[-0.520,101.462],[-0.520,101.438]] },
+  { nama:"Lima Puluh",     color:"#0f766e", coords:[[-0.504,101.442],[-0.504,101.465],[-0.535,101.465],[-0.535,101.442]] },
+  { nama:"Sail",           color:"#c026d3", coords:[[-0.508,101.445],[-0.508,101.470],[-0.540,101.470],[-0.540,101.445]] },
+];
+
+// ===================== MAP INIT =====================
+const map = L.map('map', { zoomControl: true }).setView([-0.5070, 101.4478], 13);
+
+// LAYER 1 – Basemap OSM
+const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+}).addTo(map);
+
+// Extra basemaps
+const cartoLight = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© CartoDB', maxZoom: 19
+});
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '© Esri', maxZoom: 18
+});
+
+// LAYER 2 – Batas Kecamatan (polygon)
+const kecLayer = L.layerGroup();
+kecamatanData.forEach(k => {
+  const poly = L.polygon(k.coords, {
+    color: k.color, weight: 2, fillColor: k.color, fillOpacity: 0.08, dashArray: '5,4'
+  });
+  poly.bindTooltip(`<strong>${k.nama}</strong>`, { sticky: true, className: 'kec-tooltip' });
+  poly.addTo(kecLayer);
+});
+kecLayer.addTo(map);
+
+// LAYER 3 – Puskesmas Markers
+const puskLayer = L.layerGroup();
+const markers = {};
+
+function markerIcon(jenis) {
+  const isRawat = jenis === "Rawat Inap";
+  const color   = isRawat ? '#dc2626' : '#0284c7';
+  const bg      = isRawat ? '#fee2e2' : '#dbeafe';
+  return L.divIcon({
+    html: `<div style="
+      width:30px;height:30px;border-radius:50%;
+      background:${color};border:3px solid #fff;
+      box-shadow:0 2px 8px rgba(0,0,0,.35);
+      display:flex;align-items:center;justify-content:center;
+      font-size:14px;cursor:pointer;
+    ">🏥</div>`,
+    iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -18],
+    className: ''
+  });
+}
+
+function buildPopup(p) {
+  const isRawat  = p.jenis === "Rawat Inap";
+  const headerCls = isRawat ? 'popup-header-rawat' : 'popup-header-nonrawat';
+  const badgeCls  = isRawat ? 'badge-rawat'  : 'badge-nonrawat';
+  return `
+    <div>
+      <div class="popup-header ${headerCls}">
+        <div class="popup-ico">🏥</div>
+        <div class="popup-title">
+          <h3>${p.nama}</h3>
+          <div class="popup-sub">Kec. ${p.kec}</div>
+        </div>
+      </div>
+      <div class="popup-body">
+        <div class="popup-row"><span class="label">📍 Alamat</span><span class="val">${p.alamat}</span></div>
+        <div class="popup-row"><span class="label">🏘️ Kecamatan</span><span class="val">${p.kec}</span></div>
+        <div class="popup-row"><span class="label">⏰ Jam</span><span class="val">${p.jam}</span></div>
+        <div class="popup-row"><span class="label">📞 Telp</span><span class="val">${p.telp}</span></div>
+        <div class="popup-row"><span class="label">🏷️ Jenis</span>
+          <span class="popup-badge ${badgeCls}">${p.jenis}</span>
+        </div>
+        <div class="popup-row"><span class="label">🌐 Koordinat</span><span class="val" style="font-family:'DM Mono',monospace;font-size:10px;">${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}</span></div>
+        <button class="popup-btn" onclick="focusPusk(${p.id})">📌 Fokus di Peta</button>
+      </div>
+    </div>
+  `;
+}
+
+puskesmas.forEach(p => {
+  const m = L.marker([p.lat, p.lng], { icon: markerIcon(p.jenis) })
+    .bindPopup(buildPopup(p), { maxWidth: 280 });
+  m.on('click', () => selectCard(p.id));
+  m.addTo(puskLayer);
+  markers[p.id] = m;
+});
+puskLayer.addTo(map);
+
+// Layer control
+const baseMaps = {
+  "🗾 OpenStreetMap": osmLayer,
+  "🌍 Carto Light":   cartoLight,
+  "🛰️ Satellite":    satellite,
+};
+const overlays = {
+  "🏥 Puskesmas": puskLayer,
+  "🏘️ Batas Kecamatan": kecLayer,
+};
+L.control.layers(baseMaps, overlays, { position: 'topright', collapsed: false }).addTo(map);
+
+// Scale
+L.control.scale({ imperial: false }).addTo(map);
+
+// ===================== SIDEBAR =====================
+let activeFilter = null;
+let selectedCard  = null;
+
+function buildSidebar() {
+  // Unique kecamatan
+  const kecs = [...new Set(puskesmas.map(p => p.kec))].sort();
+  const fr = document.getElementById('filter-row');
+  // All button
+  const allBtn = document.createElement('button');
+  allBtn.className = 'filter-btn active';
+  allBtn.id = 'filter-all';
+  allBtn.innerHTML = `<span>Semua Kecamatan</span><span class="cnt">${puskesmas.length}</span>`;
+  allBtn.onclick = () => filterBy(null);
+  fr.appendChild(allBtn);
+  kecs.forEach(k => {
+    const cnt = puskesmas.filter(p => p.kec === k).length;
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn';
+    btn.id = 'filter-' + k;
+    btn.innerHTML = `<span>${k}</span><span class="cnt">${cnt}</span>`;
+    btn.onclick = () => filterBy(k);
+    fr.appendChild(btn);
+  });
+  renderList(puskesmas);
+}
+
+function renderList(data) {
+  const list = document.getElementById('pusk-list');
+  list.innerHTML = '';
+  data.forEach(p => {
+    const isRawat = p.jenis === "Rawat Inap";
+    const div = document.createElement('div');
+    div.className = 'pusk-card';
+    div.id = 'card-' + p.id;
+    div.innerHTML = `
+      <div class="pusk-icon ${isRawat ? 'icon-rawat' : 'icon-nonrawat'}">🏥</div>
+      <div class="pusk-info">
+        <h4>${p.nama}</h4>
+        <p>${p.alamat}</p>
+        <p>Kec. ${p.kec}</p>
+        <span class="pusk-tag ${isRawat ? 'tag-rawat' : 'tag-nonrawat'}">${p.jenis}</span>
+      </div>
+    `;
+    div.onclick = () => {
+      map.setView([p.lat, p.lng], 16);
+      markers[p.id].openPopup();
+      selectCard(p.id);
+    };
+    list.appendChild(div);
+  });
+}
+
+function filterBy(kec) {
+  activeFilter = kec;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById(kec ? 'filter-' + kec : 'filter-all');
+  if (btn) btn.classList.add('active');
+  const filtered = kec ? puskesmas.filter(p => p.kec === kec) : puskesmas;
+  renderList(filtered);
+  // Pan map to filtered center
+  if (kec && filtered.length) {
+    const avgLat = filtered.reduce((s,p) => s+p.lat, 0) / filtered.length;
+    const avgLng = filtered.reduce((s,p) => s+p.lng, 0) / filtered.length;
+    map.setView([avgLat, avgLng], 14);
+  } else {
+    map.setView([-0.5070, 101.4478], 13);
+  }
+}
+
+function selectCard(id) {
+  if (selectedCard) {
+    const prev = document.getElementById('card-' + selectedCard);
+    if (prev) prev.classList.remove('selected');
+  }
+  selectedCard = id;
+  const cur = document.getElementById('card-' + id);
+  if (cur) {
+    cur.classList.add('selected');
+    cur.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+window.focusPusk = function(id) {
+  const p = puskesmas.find(x => x.id === id);
+  if (p) {
+    map.setView([p.lat, p.lng], 17);
+    selectCard(id);
+  }
+};
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+buildSidebar();
+</script>
+</body>
+</html>
